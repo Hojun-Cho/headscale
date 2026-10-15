@@ -151,16 +151,6 @@ func HtmlStructure(head, body *elem.Element) *elem.Element {
 				attrs.Rel:  "icon",
 				attrs.Href: "/favicon.ico",
 			}),
-			// Google Fonts for Roboto and Roboto Mono
-			elem.Link(attrs.Props{
-				attrs.Rel:     "preconnect",
-				attrs.Href:    "https://fonts.gstatic.com",
-				"crossorigin": "",
-			}),
-			elem.Link(attrs.Props{
-				attrs.Rel:  "stylesheet",
-				attrs.Href: "https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;700&display=swap",
-			}),
 			// Material for MkDocs CSS styles
 			elem.Style(attrs.Props{attrs.Type: "text/css"}, elem.Raw(assets.CSS)),
 			head,
