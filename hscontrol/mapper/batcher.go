@@ -129,6 +129,13 @@ func generateMapResponse(
 			currentPeerIDs = append(currentPeerIDs, peer.ID().NodeID())
 		}
 
+		// Synthetic Mullvad peers are never in ListPeers but go out with
+		// every full peer list. Count the ones the node still gets as
+		// present, so the diff removes them only when it stops qualifying.
+		if viewer, ok := mapper.state.GetNodeByID(nodeID); ok {
+			currentPeerIDs = append(currentPeerIDs, mullvadDirectIDs(viewer, mapper.cfg)...)
+		}
+
 		removed = nc.computePeerDiff(currentPeerIDs)
 		resp, err = mapper.policyChangeResponse(nodeID, version, currentPeers)
 	} else if isSelfUpdate {

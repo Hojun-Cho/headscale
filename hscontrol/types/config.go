@@ -118,6 +118,11 @@ type NodeConfig struct {
 
 	// Routes contains configuration for route behaviour.
 	Routes RouteConfig
+
+	// MullvadDirect gives the listed devices one Mullvad WireGuard server
+	// per city as an exit node; nil when node.mullvad_direct is absent.
+	// Kept off /debug/config: it holds node keys and tunnel addresses.
+	MullvadDirect *MullvadDirect `json:"-"`
 }
 
 // Config contains the initial Headscale configuration.
@@ -1592,6 +1597,17 @@ func LoadServerConfig() (*Config, error) {
 		})
 	}
 
+	mullvadDirectCfg, err := mullvadDirect(prefix4, prefix6, alloc)
+	if err != nil {
+		v.Add(&ConfigError{
+			Reason:  "node.mullvad_direct is invalid",
+			Current: []KV{{"node.mullvad_direct", "<inline block>"}},
+			Detail:  err.Error(),
+			Hint:    "fix dns, relays_path, default_city, devices or devices_path (name, node_key, ipv4, ipv6, mullvad_device), refetch the relay list, or remove the block",
+			Cause:   err,
+		})
+	}
+
 	derpConfig := derpConfig()
 	logTailConfig := logtailConfig()
 
@@ -1695,6 +1711,7 @@ func LoadServerConfig() (*Config, error) {
 					ProbeTimeout:  viper.GetDuration("node.routes.ha.probe_timeout"),
 				},
 			},
+			MullvadDirect: mullvadDirectCfg,
 		},
 
 		PreAuthKeys: PreAuthKeysConfig{

@@ -227,6 +227,22 @@ func (b *MapResponseBuilder) WithPeers(peers views.Slice[types.NodeView]) *MapRe
 		return b
 	}
 
+	// A full list replaces the client's peer set, so the synthetic Mullvad
+	// peers ride along with every one. Their IDs sit above every real ID,
+	// which keeps the list sorted. Their owner, the tagged-devices user,
+	// must be among the profiles (WithUserProfiles runs first).
+	if b.mapper.cfg != nil && b.mapper.cfg.Node.MullvadDirect != nil {
+		viewer, _ := b.mapper.state.GetNodeByID(b.nodeID)
+		if mp := mullvadDirectPeers(viewer, b.mapper.cfg); len(mp) > 0 {
+			tailPeers = append(tailPeers, mp...)
+
+			tagged := tailcfg.UserID(types.TaggedDevicesUserID)
+			if !slices.ContainsFunc(b.resp.UserProfiles, func(p tailcfg.UserProfile) bool { return p.ID == tagged }) {
+				b.resp.UserProfiles = append(b.resp.UserProfiles, types.TaggedDevices.TailscaleUserProfile())
+			}
+		}
+	}
+
 	b.resp.Peers = tailPeers
 
 	return b
