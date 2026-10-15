@@ -305,6 +305,7 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		// cap stays off the peer view, leaving CapMap empty for most
 		// peers. [policyv2.PeerCapMap] encodes those conditions.
 		tn.CapMap = policyv2.PeerCapMap(peer, allCapMaps[peer.ID()])
+		asMullvadExitNode(tn, peer, b.mapper.cfg.Node.MullvadExitNodes)
 
 		tailPeers = append(tailPeers, tn)
 	}
@@ -315,6 +316,21 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 	})
 
 	return tailPeers, nil
+}
+
+// asMullvadExitNode dresses an exit node listed in locs the way Tailscale's
+// control plane dresses its Mullvad relays: clients file a peer under Mullvad
+// by the ".mullvad.ts.net." name suffix and group it by Hostinfo.Location.
+func asMullvadExitNode(tn *tailcfg.Node, peer types.NodeView, locs map[string]tailcfg.Location) {
+	loc, ok := locs[peer.GivenName()]
+	if !ok || !peer.IsExitNode() {
+		return
+	}
+
+	hi := peer.Hostinfo().AsStruct()
+	hi.Location = &loc
+	tn.Hostinfo = hi.View()
+	tn.Name = peer.GivenName() + ".mullvad.ts.net."
 }
 
 // WithPingRequest adds a PingRequest to the response.

@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"net/netip"
 	"testing"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -345,4 +347,39 @@ func TestMapResponseBuilder_MultipleErrors(t *testing.T) {
 
 	// The error should contain information about multiple errors
 	assert.Contains(t, err.Error(), "multiple errors")
+}
+
+func TestAsMullvadExitNode(t *testing.T) {
+	exitRoutes := []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()}
+	tokyo := tailcfg.Location{Country: "Japan", CountryCode: "JP", City: "Tokyo", CityCode: "TYO"}
+	locs := map[string]tailcfg.Location{"mullvad-jp": tokyo}
+
+	peer := func(name string, approved []netip.Prefix) (*types.Node, *tailcfg.Node) {
+		n := &types.Node{
+			GivenName:      name,
+			Hostinfo:       &tailcfg.Hostinfo{Hostname: name, RoutableIPs: exitRoutes},
+			ApprovedRoutes: approved,
+		}
+
+		return n, &tailcfg.Node{Name: name + ".example.com.", Hostinfo: n.View().Hostinfo()}
+	}
+
+	n, tn := peer("mullvad-jp", exitRoutes)
+	asMullvadExitNode(tn, n.View(), locs)
+	assert.Equal(t, "mullvad-jp.mullvad.ts.net.", tn.Name)
+	assert.Equal(t, tokyo, *tn.Hostinfo.Location().AsStruct())
+	assert.Equal(t, "mullvad-jp", tn.Hostinfo.Hostname())
+	assert.Nil(t, n.Hostinfo.Location, "the stored Hostinfo must stay untouched")
+
+	// Not an exit node until the routes are approved.
+	n, tn = peer("mullvad-jp", nil)
+	asMullvadExitNode(tn, n.View(), locs)
+	assert.Equal(t, "mullvad-jp.example.com.", tn.Name)
+	assert.False(t, tn.Hostinfo.Location().Valid())
+
+	// Not listed.
+	n, tn = peer("home-exit", exitRoutes)
+	asMullvadExitNode(tn, n.View(), locs)
+	assert.Equal(t, "home-exit.example.com.", tn.Name)
+	assert.False(t, tn.Hostinfo.Location().Valid())
 }

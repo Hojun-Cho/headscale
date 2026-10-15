@@ -40,6 +40,7 @@ var (
 	errServerURLSame             = errors.New("server_url cannot use the same domain as base_domain in a way that could make the DERP and headscale server unreachable")
 	errInvalidPKCEMethod         = errors.New("pkce.method must be either 'plain' or 'S256'")
 	errTrustedProxyZeroRange     = errors.New("0.0.0.0/0 and ::/0 are not allowed")
+	errMullvadLocation           = errors.New("country, countrycode, city and citycode are required")
 	ErrNoPrefixConfigured        = errors.New("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
 	ErrInvalidAllocationStrategy = errors.New("invalid prefix allocation strategy")
 )
@@ -103,6 +104,12 @@ type NodeConfig struct {
 
 	// Routes contains configuration for route behaviour.
 	Routes RouteConfig
+
+	// MullvadExitNodes maps an exit node's given name to a location.
+	// Peers see such a node as "<given name>.mullvad.ts.net." with that
+	// Hostinfo.Location, which clients list under Mullvad by country and
+	// city.
+	MullvadExitNodes map[string]tailcfg.Location
 }
 
 // Config contains the initial Headscale configuration.
@@ -1047,6 +1054,27 @@ func dns() (DNSConfig, error) {
 	return dns, nil
 }
 
+// mullvadExitNodes reads node.mullvad_exit_nodes. Keys are matched
+// case-insensitively, so countrycode and CountryCode both fill
+// [tailcfg.Location.CountryCode]. The CLI exit-node list panics on an
+// empty city code, so the four names are required.
+func mullvadExitNodes() (map[string]tailcfg.Location, error) {
+	var nodes map[string]tailcfg.Location
+
+	err := viper.UnmarshalKey("node.mullvad_exit_nodes", &nodes)
+	if err != nil {
+		return nil, err
+	}
+
+	for name, loc := range nodes {
+		if loc.Country == "" || loc.CountryCode == "" || loc.City == "" || loc.CityCode == "" {
+			return nil, fmt.Errorf("%s: %w", name, errMullvadLocation)
+		}
+	}
+
+	return nodes, nil
+}
+
 // parseResolvers converts nameserver strings into DNS resolvers.
 // If a nameserver is a valid IP, it will be used as a regular resolver.
 // If a nameserver is a valid URL, it will be used as a DoH resolver.
@@ -1341,6 +1369,17 @@ func LoadServerConfig() (*Config, error) {
 		})
 	}
 
+	mullvadNodes, err := mullvadExitNodes()
+	if err != nil {
+		v.Add(&ConfigError{
+			Reason:  "node.mullvad_exit_nodes cannot be parsed",
+			Current: []KV{{"node.mullvad_exit_nodes", "<inline locations>"}},
+			Detail:  err.Error(),
+			Hint:    "map each exit node's given name to country, countrycode, city and citycode",
+			Cause:   err,
+		})
+	}
+
 	derpConfig := derpConfig()
 	logTailConfig := logtailConfig()
 
@@ -1425,6 +1464,7 @@ func LoadServerConfig() (*Config, error) {
 					ProbeTimeout:  viper.GetDuration("node.routes.ha.probe_timeout"),
 				},
 			},
+			MullvadExitNodes: mullvadNodes,
 		},
 
 		PreAuthKeys: PreAuthKeysConfig{
